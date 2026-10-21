@@ -88,19 +88,50 @@ async function boot() {
 
 function renderLogin() {
   clearInterval(S.timer);
+  const ic = (d) => `<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  // Diseño "Propuesta A": encabezado compacto + formulario visible de inmediato en el celular; panel lateral en escritorio
   $('#app').innerHTML = `
-  <div class="login"><form class="card" id="lf">
-    <div class="logo">${LOGO}<span>CoolLab</span></div>
-    <p class="faint" style="margin:-10px 0 16px">Gestión técnica de refrigeración industrial</p>
-    <h1 style="margin-bottom:14px">Ingresar</h1>
-    <div class="field"><label>Correo</label><input name="email" type="email" autocomplete="username" required></div>
-    <div class="field"><label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required></div>
-    <button class="btn primary big" style="margin-top:18px">Entrar</button>
-  </form></div>`;
-  $('#lf').onsubmit = async (e) => {
+  <div class="lg">
+    <aside class="lg-side">
+      <div class="lg-brand"><img src="/icon-192.png" alt="" width="44" height="44"><span>CoolLab</span></div>
+      <p class="lg-tag">Gestión técnica de refrigeración industrial</p>
+      <div class="lg-more">
+        <p class="lg-lead">Visitas en terreno, mediciones e informes firmados por el cliente, en un solo lugar.</p>
+        <ul class="lg-feat">
+          <li><span>${ic('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>')}</span><p><b>Asistencia verificada.</b> Hora, GPS y clima al iniciar y terminar cada visita.</p></li>
+          <li><span>${ic('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14h6"/>')}</span><p><b>Informe PDF con firma.</b> El cliente firma en pantalla y recibe el informe por QR.</p></li>
+          <li><span>${ic('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>')}</span><p><b>KPIs de cada equipo.</b> Recalentamiento, MTTR, fugas y CO₂e calculados solos.</p></li>
+        </ul>
+      </div>
+    </aside>
+    <main class="lg-main">
+      <form id="lf" class="lg-form" novalidate>
+        <h1>Ingresar</h1>
+        <p class="lg-sub">Usa el correo que te entregó tu empresa.</p>
+        <div class="lg-field"><label for="lg-email">Correo</label>
+          <div class="lg-input">${ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>')}
+            <input id="lg-email" name="email" type="email" inputmode="email" autocomplete="username" placeholder="nombre@empresa.cl" required></div></div>
+        <div class="lg-field"><label for="lg-pass">Contraseña</label>
+          <div class="lg-input">${ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}
+            <input id="lg-pass" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+            <button type="button" class="lg-show" data-show aria-pressed="false">Mostrar</button></div></div>
+        <p class="lg-err" role="alert" hidden></p>
+        <button class="lg-go" type="submit">Entrar</button>
+        <p class="lg-help">¿Olvidaste tu contraseña?<br>Pídele una nueva al administrador.</p>
+        <div class="lg-install">${ic('<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>')}<span>Instálala en tu celular: menú del navegador → <b>Agregar a pantalla de inicio</b></span></div>
+      </form>
+    </main>
+  </div>`;
+  const f = $('#lf'), err = $('.lg-err', f), pass = $('#lg-pass'), show = $('[data-show]', f);
+  show.onclick = () => { const v = pass.type === 'password'; pass.type = v ? 'text' : 'password'; show.textContent = v ? 'Ocultar' : 'Mostrar'; show.setAttribute('aria-pressed', String(v)); pass.focus(); };
+  f.onsubmit = async (e) => {
     e.preventDefault();
-    try { S.me = await api('/auth/login', { method: 'POST', body: formData(e.target) }); boot(); }
-    catch (err) { toast(err.message, true); }
+    err.hidden = true;
+    const b = formData(f);
+    if (!b.email || !b.password) { err.textContent = 'Escribe tu correo y tu contraseña.'; err.hidden = false; return; }
+    const btn = $('.lg-go', f); busy(btn, true, 'Entrando…');
+    try { S.me = await api('/auth/login', { method: 'POST', body: b }); boot(); }
+    catch (ex) { err.textContent = ex.message; err.hidden = false; busy(btn, false); }
   };
 }
 
