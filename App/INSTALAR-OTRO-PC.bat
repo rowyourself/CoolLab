@@ -19,13 +19,13 @@ if exist "%DEST%\.git" (
   echo Ya estaba descargado: trayendo la ultima version...
   git -C "%DEST%" pull --rebase
 ) else (
-  echo Descargando el proyecto (si te lo pide, inicia sesion en GitHub en el navegador)...
+  echo Descargando el proyecto. Si te lo pide, inicia sesion en GitHub en el navegador...
   git clone "%REPO%" "%DEST%" || ( echo [ERROR] No se pudo descargar. & pause & exit /b 1 )
 )
 cd /d "%DEST%\App" || ( echo [ERROR] No se encontro la carpeta App. & pause & exit /b 1 )
-if not exist ".env" ( copy ".env.example" ".env" >nul & echo Se creo .env desde .env.example (editalo si necesitas otra clave de admin local). )
+if not exist ".env" ( copy ".env.example" ".env" >nul & echo Se creo .env desde .env.example, editalo si necesitas otra clave de admin local. )
 echo.
-echo Instalando dependencias (1-3 min)...
+echo Instalando dependencias, tarda 1 a 3 minutos...
 call npm install || ( echo [ERROR] Fallo npm install. & pause & exit /b 1 )
 echo.
 echo [OK] Listo. Tu proyecto esta en:
