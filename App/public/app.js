@@ -180,7 +180,7 @@ async function route() {
     if (!a) return isStaff() ? (location.hash = '#/dashboard') : viewHome();
     if (a === 'nueva') return viewNew();
     if (a === 'visita') return viewVisit(+b);
-    if (a === 'visitas') return viewVisits();
+    if (a === 'visitas') return viewVisits(+b || null);
     if (a === 'dashboard') return viewDashboard({});
     if (a === 'mi-dashboard') return viewDashboard({ technician_id: S.me.id, mine: true });
     if (a === 'tecnico') return viewDashboard({ technician_id: +b });
@@ -808,7 +808,7 @@ function measList(v, edit) {
 }
 
 // ---------- Listado de visitas ----------
-async function viewVisits() {
+async function viewVisits(techId) {
   const users = isStaff() ? await api('/users') : [];
   const clients = await api('/clients');
   layout(`
@@ -834,6 +834,7 @@ async function viewVisits() {
     $$('#vl tr[data-href]').forEach((tr) => (tr.onclick = () => (location.hash = tr.dataset.href)));
   };
   $('#vf').oninput = () => { clearTimeout(load.t); load.t = setTimeout(load, 250); };
+  if (techId && $('#vf').technician_id) $('#vf').technician_id.value = String(techId);
   load();
 }
 
@@ -855,6 +856,11 @@ async function viewDashboard(opts) {
       <div><label>Empresa</label><select name="client_id"><option value="">Todas</option>${clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
       ${isStaff() && !tech ? `<div><label>Técnico</label><select name="technician_id"><option value="">Todos</option>${users.filter((u) => u.role === 'tecnico').map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>` : ''}
     </form>
+    ${tech && !opts.mine && isStaff() ? `<div class="card" id="tvis" style="margin-bottom:14px"><h2>Visitas <span class="faint" id="tvisN" style="font-weight:500"></span>
+        <span class="row" style="margin-left:auto;gap:6px">${[['', 'Todas'], ['en_curso', 'En curso'], ['finalizada', 'Finalizadas'], ['anulada', 'Anuladas']].map(([k, l]) => `<button type="button" class="btn sm${k === '' ? ' primary' : ''}" data-vst="${k}" aria-pressed="${k === ''}">${l}</button>`).join('')}
+        <a class="btn sm" href="#/visitas/${tech.id}">Ver en Visitas</a></span></h2>
+      <p class="faint" style="margin:-4px 0 8px">Incluye las visitas iniciadas sin solicitud. Usa los filtros de fecha, tipo y empresa de arriba.</p>
+      <div id="tvisL" class="faint">Cargando…</div></div>` : ''}
     ${tech && !opts.mine && isStaff() ? `<div class="card" id="treq"><h2>Solicitudes asignadas <button class="btn sm primary" id="asg" style="margin-left:auto">＋ Asignar solicitud</button></h2><div id="treqL" class="faint">Cargando…</div></div>` : ''}
     <div id="dash"></div>`);
   if (tech && !opts.mine && isStaff()) {
@@ -868,9 +874,28 @@ async function viewDashboard(opts) {
     $('#asg').onclick = () => requestDialog({ technician_id: tech.id }, loadReq);
     loadReq();
   }
+  // Visitas del técnico (todas, no solo las que vienen de una solicitud)
+  let vst = '';
+  const loadVisits = async (f) => {
+    if (!$('#tvisL')) return;
+    const q = new URLSearchParams({ ...f, technician_id: tech.id, limit: 100, ...(vst ? { status: vst } : {}) });
+    const rows = await api('/visits?' + q);
+    $('#tvisN').textContent = `· ${rows.length}${rows.length === 100 ? '+' : ''}`;
+    $('#tvisL').outerHTML = `<div id="tvisL">${rows.length ? `<div class="scroll"><table class="t"><thead><tr><th>Folio</th><th>Empresa</th><th>Tipo</th><th>Inicio</th><th class="r">Duración</th><th>Estado / resultado</th></tr></thead><tbody>
+      ${rows.map((v) => `<tr data-href="#/visita/${v.id}"><td class="num">${esc(v.folio)}</td><td><b>${esc(v.client_name)}</b>${v.equipment_name ? `<div class="faint">${esc(v.equipment_name)}</div>` : ''}</td><td>${typeChip(v.type)}</td>
+        <td>${fmtDT(v.started_at)}</td><td class="r num">${v.ended_at ? fmtMin((new Date(v.ended_at) - new Date(v.started_at)) / 60000) : '—'}</td><td>${statusChip(v)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">Sin visitas con estos filtros.</div>'}</div>`;
+    $$('#tvisL tr[data-href]').forEach((tr) => (tr.onclick = () => (location.hash = tr.dataset.href)));
+  };
+  $$('[data-vst]').forEach((b) => (b.onclick = () => {
+    vst = b.dataset.vst;
+    $$('[data-vst]').forEach((x) => { const on = x === b; x.classList.toggle('primary', on); x.setAttribute('aria-pressed', String(on)); });
+    load();
+  }));
   const load = async () => {
     const f = Object.fromEntries(Object.entries(formData($('#df'))).filter(([, x]) => x));
     if (opts.technician_id) f.technician_id = opts.technician_id;
+    if (tech && !opts.mine && isStaff()) loadVisits(Object.fromEntries(Object.entries(f).filter(([k]) => ['from', 'to', 'type', 'client_id'].includes(k))));
     const d = await api('/dashboard?' + new URLSearchParams(f));
     renderDash(d, !!tech, f);
   };
