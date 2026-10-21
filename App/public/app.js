@@ -292,8 +292,8 @@ const numIcon = (n, urgent) => L.divIcon({ className: '', html: `<div class="pin
 const PRIO = { urgente: ['bad', 'Urgente'], alta: ['warn', 'Alta'], normal: ['', 'Normal'], baja: ['', 'Baja'] };
 const REQST = { pendiente: ['warn', 'Sin asignar'], asignada: ['live', 'Asignada'], en_curso: ['live', 'En curso'], completada: ['ok', '✓ Completada'], cancelada: ['', 'Cancelada'] };
 const prioChip = (p) => p && p !== 'normal' ? `<span class="chip ${PRIO[p]?.[0] || ''}">${esc(PRIO[p]?.[1] || p)}</span>` : '';
-const reqChip = (q) => `<span class="chip ${REQST[q.status][0]}">${q.status === 'en_curso' ? '<i></i>' : ''}${REQST[q.status][1]}</span>`
-  + (q.regularized ? '<span class="chip" title="Solicitud creada automáticamente para una visita antigua hecha sin solicitud">Regularizada</span>' : '');
+const REG_CHIP = '<span class="chip" title="Solicitud creada automáticamente para una visita antigua hecha sin solicitud">Regularizada</span>';
+const reqChip = (q) => `<span class="chip ${REQST[q.status][0]}">${q.status === 'en_curso' ? '<i></i>' : ''}${REQST[q.status][1]}</span>` + (q.regularized ? REG_CHIP : '');
 function reqItem(q, techView, lead = '', extra = '') {
   const late = q.scheduled_date && q.scheduled_date < todayISO() && ['asignada', 'en_curso', 'pendiente'].includes(q.status);
   const nav = q.client_lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${q.client_lat},${q.client_lng}&travelmode=driving` : null;
@@ -304,10 +304,10 @@ function reqItem(q, techView, lead = '', extra = '') {
     : '';
   return `<li class="item req">${lead}<span class="bar" style="background:var(--t-${q.type})"></span>
     <div class="main"><b>${esc(q.client_name)}</b>
-      <div class="meta"><span class="num">${esc(q.code)}</span>${q.visit_folio && q.status === 'completada' ? ` → <span class="num">${esc(q.visit_folio)}</span>` : ''} · ${esc(S.cat.visitTypes[q.type].label)}${q.equipment_name ? ' · ' + esc(q.equipment_name) : ''}</div>
+      <div class="meta req-type">${typeChip(q.type)}<span><span class="num">${esc(q.code)}</span>${q.visit_folio && q.status === 'completada' ? ` → <span class="num">${esc(q.visit_folio)}</span>` : ''}${q.equipment_name ? ' · ' + esc(q.equipment_name) : ''}</span></div>
       <div class="meta">${q.client_address ? esc(q.client_address) + ' · ' : ''}${q.scheduled_date ? `<span style="${late ? 'color:var(--bad);font-weight:600' : ''}">${late ? 'Atrasada · ' : ''}${fmtD(q.scheduled_date)}</span>` : 'Sin fecha'}${!techView && q.tech_name ? ' · ' + esc(q.tech_name) : ''}</div>
       ${q.description ? `<div class="meta faint">${esc(q.description)}</div>` : ''}${extra ? `<div class="meta faint">${extra}</div>` : ''}</div>
-    <div class="req-r">${prioChip(q.priority)}${reqChip({ ...q, regularized: 0 })}${q.status === 'completada' && q.visit_result ? resultChip(q.visit_result) : ''}${q.regularized ? reqChip({ status: q.status, regularized: 1 }).replace(/^<span class="chip[^"]*">[^<]*<\/span>/, '') : ''}<div class="row end" style="gap:6px">${act}</div></div></li>`;
+    <div class="req-r">${prioChip(q.priority)}${reqChip({ ...q, regularized: 0 })}${q.status === 'completada' && q.visit_result ? resultChip(q.visit_result) : ''}${q.regularized ? REG_CHIP : ''}<div class="row end" style="gap:6px">${act}</div></div></li>`;
 }
 function bindReqActions(again) {
   $$('[data-start]').forEach((b) => (b.onclick = async () => {
@@ -1063,6 +1063,7 @@ async function viewRequests() {
       <form class="filters" id="rf">
         <div><label>Buscar</label><input name="q" placeholder="Código, empresa o descripción"></div>
         <div><label>Estado</label><select name="status"><option value="abiertas">Abiertas</option><option value="">Todas</option>${Object.entries(REQST).map(([k, [, l]]) => `<option value="${k}">${esc(l.replace('✓ ', ''))}</option>`).join('')}<option value="regularizadas">Regularizadas</option></select></div>
+        <div><label>Tipo</label><select name="type"><option value="">Todos</option>${Object.entries(S.cat.visitTypes).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('')}</select></div>
         <div><label>Resultado</label><select name="result"><option value="">Todos</option>${Object.entries(S.cat.results).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
         <div><label>Técnico</label><select name="technician_id"><option value="">Todos</option>${team.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
       </form>
@@ -1085,7 +1086,7 @@ async function viewRequests() {
     $('#rqLive').innerHTML = `<h2><i class="live-dot"></i> Ahora en terreno <span class="faint" style="font-weight:500">· ${live.length}</span></h2>
       <ul class="list">${live.map((q) => `<li class="item" style="cursor:pointer" ${q.visit_id ? `data-href="#/visita/${q.visit_id}"` : ''}><span class="bar" style="background:var(--ok)"></span>
         <div class="main"><b>${esc(q.tech_name || '—')} · ${esc(q.client_name)}</b>
-          <div class="meta"><span class="num">${esc(q.code)}</span> · ${esc(S.cat.visitTypes[q.type].label)}${q.equipment_name ? ' · ' + esc(q.equipment_name) : ''}</div>
+          <div class="meta req-type">${typeChip(q.type)}<span><span class="num">${esc(q.code)}</span>${q.equipment_name ? ' · ' + esc(q.equipment_name) : ''}</span></div>
           <div class="meta">En terreno desde ${q.visit_started_at ? fmtDT(q.visit_started_at) : '—'}</div></div>
         <div class="req-r">${prioChip(q.priority)}<span class="chip ok">● En curso</span></div></li>`).join('')}</ul>`;
     $$('#rqLive [data-href]').forEach((li) => (li.onclick = () => (location.hash = li.dataset.href)));

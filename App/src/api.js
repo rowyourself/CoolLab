@@ -388,6 +388,7 @@ r.get('/requests', (req, res) => {
   else if (req.query.status) { w.push('r.status=@st'); p.st = req.query.status; }
   if (req.query.technician_id && req.user.role !== 'tecnico') { w.push('r.technician_id=@t'); p.t = +req.query.technician_id; }
   if (req.query.client_id) { w.push('r.client_id=@c'); p.c = +req.query.client_id; }
+  if (req.query.type && cat.VISIT_TYPES[req.query.type]) { w.push('r.type=@rty'); p.rty = req.query.type; }
   if (req.query.result && cat.RESULTS[req.query.result]) { w.push('v.result=@res'); p.res = req.query.result; }
   if (req.query.q) { w.push('(r.code LIKE @q OR c.name LIKE @q OR r.description LIKE @q)'); p.q = `%${req.query.q}%`; }
   res.json(db.prepare(`${REQ_SELECT} WHERE ${w.join(' AND ')}
