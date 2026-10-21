@@ -11,7 +11,7 @@ if not "%PEND%"=="0" (
   pause & exit /b 1
 )
 for /f %%h in ('git rev-parse HEAD') do set "ANTES=%%h"
-git pull --rebase
+git pull --rebase --autostash
 if errorlevel 1 ( echo [ERROR] No se pudieron bajar los cambios. & pause & exit /b 1 )
 git diff --quiet %ANTES% HEAD -- package.json package-lock.json || ( echo Cambiaron las dependencias: npm install... & call npm install )
 echo.

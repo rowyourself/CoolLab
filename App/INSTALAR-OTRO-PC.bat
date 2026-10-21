@@ -17,7 +17,7 @@ git config --global user.email >nul 2>nul || ( set /p GE="Tu correo de GitHub: "
 
 if exist "%DEST%\.git" (
   echo Ya estaba descargado: trayendo la ultima version...
-  git -C "%DEST%" pull --rebase
+  git -C "%DEST%" pull --rebase --autostash
 ) else (
   echo Descargando el proyecto. Si te lo pide, inicia sesion en GitHub en el navegador...
   git clone "%REPO%" "%DEST%" || ( echo [ERROR] No se pudo descargar. & pause & exit /b 1 )

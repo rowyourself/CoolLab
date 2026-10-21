@@ -16,7 +16,7 @@ git commit -m "%MSG%" || ( pause & exit /b 1 )
 :push
 echo.
 echo Trayendo primero los cambios del otro PC...
-git pull --rebase
+git pull --rebase --autostash
 if errorlevel 1 (
   echo [ATENCION] Hay cambios en conflicto con el otro PC. No se subio nada.
   pause & exit /b 1
