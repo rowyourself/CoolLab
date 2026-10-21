@@ -1,0 +1,9 @@
+# Saltos de línea correctos en Windows y en el servidor Linux
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.otf binary
+*.docx binary

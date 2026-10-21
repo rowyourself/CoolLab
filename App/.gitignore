@@ -1,0 +1,19 @@
+# Dependencias (se reinstalan con "npm install")
+node_modules/
+
+# Datos locales: base de datos y fotos (cada PC / servidor tiene los suyos)
+data/
+uploads/
+
+# Configuración y secretos (contraseñas). Usa .env.example como plantilla.
+.env
+.env.*
+!.env.example
+
+# Documento interno con contraseñas de prueba
+docs/
+
+# Varios
+*.log
+.DS_Store
+Thumbs.db

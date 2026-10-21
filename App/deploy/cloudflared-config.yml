@@ -1,0 +1,9 @@
+# Copiar a: C:\Users\<tu-usuario>\.cloudflared\config.yml
+# Reemplaza <TUNNEL_ID> y el dominio.
+tunnel: <TUNNEL_ID>
+credentials-file: C:\Users\<tu-usuario>\.cloudflared\<TUNNEL_ID>.json
+
+ingress:
+  - hostname: visitas.tudominio.cl
+    service: http://localhost:3000
+  - service: http_status:404
