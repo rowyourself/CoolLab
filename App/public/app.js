@@ -1074,13 +1074,17 @@ async function viewRequests() {
     .catch(() => ($('#rqMap').innerHTML = '<div class="empty">No se pudo cargar el mapa.</div>'));
   const load = async () => {
     const f = Object.fromEntries(Object.entries(formData($('#rf'))).filter(([, x]) => x));
-    const [rows, all] = await Promise.all([api('/requests?' + new URLSearchParams(f)), api('/requests?status=abiertas')]);
+    let [rows, all] = await Promise.all([api('/requests?' + new URLSearchParams(f)), api('/requests?status=abiertas')]);
     const today = todayISO();
     $('#rqT').innerHTML = tile('Sin asignar', all.filter((q) => q.status === 'pendiente').length, '', 'Esperando técnico')
       + tile('Asignadas', all.filter((q) => q.status === 'asignada').length, '', 'Por iniciar')
       + tile('En curso', all.filter((q) => q.status === 'en_curso').length, '', 'Técnico en terreno')
       + tile('Atrasadas', all.filter((q) => q.scheduled_date && q.scheduled_date < today).length, '', 'Fecha vencida');
-    $('#rl').innerHTML = rows.length ? rows.map((q) => reqItem(q, false)).join('') : '<div class="empty">No hay solicitudes con esos filtros.</div>';
+    // Las solicitudes en curso se muestran solo en "Ahora en terreno" (salvo que se filtre explícitamente por En curso)
+    const enTerreno = f.status === 'en_curso' ? 0 : rows.filter((q) => q.status === 'en_curso').length;
+    if (f.status !== 'en_curso') rows = rows.filter((q) => q.status !== 'en_curso');
+    $('#rl').innerHTML = (rows.length ? rows.map((q) => reqItem(q, false)).join('') : '<div class="empty">No hay solicitudes con esos filtros.</div>')
+      + (enTerreno ? `<p class="faint" style="margin:10px 4px 0;font-size:13px">${enTerreno} solicitud${enTerreno === 1 ? '' : 'es'} en curso se muestra${enTerreno === 1 ? '' : 'n'} arriba, en <b>Ahora en terreno</b>.</p>` : '');
     const live = all.filter((q) => q.status === 'en_curso');
     $('#rqLive').style.display = live.length ? '' : 'none';
     $('#rqLive').innerHTML = `<h2><i class="live-dot"></i> Ahora en terreno <span class="faint" style="font-weight:500">· ${live.length}</span></h2>
