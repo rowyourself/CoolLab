@@ -304,10 +304,10 @@ function reqItem(q, techView, lead = '', extra = '') {
     : '';
   return `<li class="item req">${lead}<span class="bar" style="background:var(--t-${q.type})"></span>
     <div class="main"><b>${esc(q.client_name)}</b>
-      <div class="meta"><span class="num">${esc(q.code)}</span> · ${esc(S.cat.visitTypes[q.type].label)}${q.equipment_name ? ' · ' + esc(q.equipment_name) : ''}</div>
+      <div class="meta"><span class="num">${esc(q.code)}</span>${q.visit_folio && q.status === 'completada' ? ` → <span class="num">${esc(q.visit_folio)}</span>` : ''} · ${esc(S.cat.visitTypes[q.type].label)}${q.equipment_name ? ' · ' + esc(q.equipment_name) : ''}</div>
       <div class="meta">${q.client_address ? esc(q.client_address) + ' · ' : ''}${q.scheduled_date ? `<span style="${late ? 'color:var(--bad);font-weight:600' : ''}">${late ? 'Atrasada · ' : ''}${fmtD(q.scheduled_date)}</span>` : 'Sin fecha'}${!techView && q.tech_name ? ' · ' + esc(q.tech_name) : ''}</div>
       ${q.description ? `<div class="meta faint">${esc(q.description)}</div>` : ''}${extra ? `<div class="meta faint">${extra}</div>` : ''}</div>
-    <div class="req-r">${prioChip(q.priority)}${reqChip(q)}<div class="row end" style="gap:6px">${act}</div></div></li>`;
+    <div class="req-r">${prioChip(q.priority)}${reqChip({ ...q, regularized: 0 })}${q.status === 'completada' && q.visit_result ? resultChip(q.visit_result) : ''}${q.regularized ? reqChip({ status: q.status, regularized: 1 }).replace(/^<span class="chip[^"]*">[^<]*<\/span>/, '') : ''}<div class="row end" style="gap:6px">${act}</div></div></li>`;
 }
 function bindReqActions(again) {
   $$('[data-start]').forEach((b) => (b.onclick = async () => {
@@ -1063,6 +1063,7 @@ async function viewRequests() {
       <form class="filters" id="rf">
         <div><label>Buscar</label><input name="q" placeholder="Código, empresa o descripción"></div>
         <div><label>Estado</label><select name="status"><option value="abiertas">Abiertas</option><option value="">Todas</option>${Object.entries(REQST).map(([k, [, l]]) => `<option value="${k}">${esc(l.replace('✓ ', ''))}</option>`).join('')}<option value="regularizadas">Regularizadas</option></select></div>
+        <div><label>Resultado</label><select name="result"><option value="">Todos</option>${Object.entries(S.cat.results).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
         <div><label>Técnico</label><select name="technician_id"><option value="">Todos</option>${team.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
       </form>
       <ul class="list" id="rl"></ul>
@@ -1109,7 +1110,11 @@ async function viewRequests() {
       setTimeout(() => map.invalidateSize(), 100);
     }
   };
-  $('#rf').oninput = () => { clearTimeout(load.t); load.t = setTimeout(load, 250); };
+  $('#rf').oninput = (e) => {
+    const f = $('#rf');
+    if (e && e.target.name === 'result' && e.target.value && ['abiertas', 'pendiente', 'asignada', 'en_curso'].includes(f.status.value)) f.status.value = '';
+    clearTimeout(load.t); load.t = setTimeout(load, 250);
+  };
   $('#nr').onclick = () => requestDialog(null, load);
   S.timer = setInterval(() => { if (!$('dialog[open]')) load(); }, 60000); // se actualiza solo cada minuto
   if (!window.L) load();
