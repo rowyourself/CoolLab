@@ -9,12 +9,30 @@ const isStaff = () => S.me && (S.me.role === 'admin' || S.me.role === 'superviso
 const LOGO = `<img src="/icon.svg" alt="" class="logo-img">`;
 
 // ---------- utilidades ----------
-// Capa del mapa: datos de OpenStreetMap servidos por CARTO (gratis con atribución).
-// No se usa tile.openstreetmap.org directo porque bloquea con 403 "Access blocked" a muchas apps.
-const osmTiles = (map) => L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  maxZoom: 20, subdomains: 'abcd', referrerPolicy: 'strict-origin-when-cross-origin',
-  attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-}).addTo(map);
+// Capa del mapa. Principal: OpenStreetMap (exige que el navegador envíe el origen; ver Referrer-Policy en server.js).
+// Respaldo automático: Esri World Street Map, si OpenStreetMap bloquea la app (403). CARTO ya no se usa: ahora pide API key.
+const TILE_PROVIDERS = {
+  osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
+  esri: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 19,
+    attribution: 'Mapa © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>, © OpenStreetMap' },
+};
+// Revisa una sola vez por sesión si OpenStreetMap responde; si no, usa Esri
+function tileProvider() {
+  if (tileProvider.p) return tileProvider.p;
+  let saved = null; try { saved = sessionStorage.getItem('cl_tiles'); } catch {}
+  if (saved && TILE_PROVIDERS[saved]) return (tileProvider.p = Promise.resolve(saved));
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 4000);
+  return (tileProvider.p = fetch('https://tile.openstreetmap.org/10/310/617.png', { referrerPolicy: 'strict-origin-when-cross-origin', signal: ctrl.signal })
+    .then((r) => (r.ok ? 'osm' : 'esri')).catch(() => 'esri')
+    .then((k) => { clearTimeout(t); try { sessionStorage.setItem('cl_tiles', k); } catch {} return k; }));
+}
+const osmTiles = (map) => {
+  const make = (k) => L.tileLayer(TILE_PROVIDERS[k].url, { maxZoom: TILE_PROVIDERS[k].maxZoom, attribution: TILE_PROVIDERS[k].attribution, referrerPolicy: 'strict-origin-when-cross-origin' });
+  let layer = make('osm').addTo(map); // se muestra de inmediato; si OSM está bloqueado se cambia a Esri
+  tileProvider().then((k) => { if (k !== 'osm' && map.hasLayer(layer)) { map.removeLayer(layer); layer = make(k).addTo(map); } });
+  return layer;
+};
 async function api(path, opts = {}) {
   const o = { credentials: 'same-origin', ...opts, headers: { ...(opts.headers || {}) } };
   if (o.body && !(o.body instanceof FormData) && typeof o.body !== 'string') { o.body = JSON.stringify(o.body); o.headers['Content-Type'] = 'application/json'; }
