@@ -27,11 +27,12 @@ El técnico lee sus instrumentos (termómetro, higrómetro, manómetros, pinza a
 ## Permisos
 | Acción | Técnico (usuario) | Supervisor | Administrador |
 |---|---|---|---|
-| Iniciar / terminar sus visitas, mediciones, fotos | ✓ | ✓ | ✓ |
+| Iniciar visitas **solo desde una solicitud asignada**; terminarlas, mediciones, fotos | ✓ | ✓ | ✓ |
+| Crear y asignar solicitudes (autorizan las visitas) | — | ✓ (su equipo) | ✓ |
 | Editar una visita después de terminada | — | ✓ | ✓ |
 | Ver visitas de otros técnicos | — | ✓ | ✓ |
 | Dashboard | Solo el suyo | Empresa completa | Empresa completa |
-| Registrar visitas a nombre de otro / con otra hora (queda marcado "registro manual") | — | ✓ | ✓ |
+| Registrar visitas a nombre de un técnico / con otra hora (queda marcado "registro manual" y se crea su solicitud automáticamente) | — | ✓ | ✓ |
 | Crear empresas y equipos | ✓ | ✓ | ✓ |
 | Editar empresas y equipos, exportar CSV, reabrir/anular visitas | — | ✓ | ✓ |
 | Crear usuarios y asignar roles | — | — | ✓ |

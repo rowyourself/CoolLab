@@ -258,8 +258,27 @@ async function locationStamp(b, client) {
 
 // Iniciar visita (botón "Iniciar visita"): la hora la pone el servidor; se registra GPS, dirección y clima exterior
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+// Toda visita nace de una solicitud (autorización previa):
+// - el técnico NO puede crear visitas directas: las inicia desde una solicitud asignada (POST /requests/:id/start)
+// - un supervisor/administrador que registra una visita a mano genera automáticamente su solicitud
 r.post('/visits', wrap(async (req, res) => {
-  try { res.json(await createVisit(req.body, req.user)); } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); throw e; }
+  if (!isStaff(req.user)) return res.status(403).json({ error: 'Las visitas solo se inician desde una solicitud asignada. Pide a tu supervisor que te asigne una.' });
+  let reqId = null;
+  try {
+    const b = req.body || {};
+    if (!b.client_id || !cat.VISIT_TYPES[b.type]) throw new HttpError(400, 'Empresa y tipo de visita son obligatorios');
+    const tech = validateAssign(req.user, b.technician_id);
+    if (!tech) throw new HttpError(400, 'Indica el técnico que realizó la visita');
+    reqId = db.prepare(`INSERT INTO requests(code,type,client_id,equipment_id,technician_id,priority,scheduled_date,description,status,created_by)
+      VALUES(?,?,?,?,?,?,date('now','localtime'),?,'asignada',?)`).run(nextRequestCode(), b.type, +b.client_id, num(b.equipment_id), tech,
+      b.priority || 'normal', (b.reason || '').trim() || 'Registro manual de visita', req.user.id).lastInsertRowid;
+    const v = await createVisit({ ...b, technician_id: tech }, req.user, reqId);
+    db.prepare("UPDATE requests SET status='en_curso', visit_id=?, updated_at=datetime('now') WHERE id=?").run(v.id, reqId);
+    res.json(v);
+  } catch (e) {
+    if (reqId) db.prepare("DELETE FROM requests WHERE id=? AND visit_id IS NULL").run(reqId); // no dejar solicitudes huérfanas
+    if (e.status) return res.status(e.status).json({ error: e.message }); throw e;
+  }
 }));
 async function createVisit(b, user, requestId = null) {
   if (!b.client_id || !b.type) throw new HttpError(400, 'Empresa y tipo de visita son obligatorios');

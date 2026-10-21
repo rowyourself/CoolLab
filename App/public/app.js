@@ -142,7 +142,7 @@ function nav() {
     ? [['#/dashboard', '◧', 'Dashboard'], ['#/solicitudes', '✎', 'Solicitudes'], ['#/equipo', '◉', 'Técnicos'], ['#/visitas', '☰', 'Visitas'], ['#/clientes', '▣', 'Clientes'], ['#/usuarios', '⚙', 'Usuarios']]
     : staff
       ? [['#/dashboard', '◧', 'Dashboard'], ['#/solicitudes', '✎', 'Solicitudes'], ['#/equipo', '◉', 'Mi equipo'], ['#/visitas', '☰', 'Visitas'], ['#/clientes', '▣', 'Clientes']]
-      : [['#/', '⌂', 'Mi ruta'], ['#/nueva', '＋', 'Nueva'], ['#/visitas', '☰', 'Visitas'], ['#/mi-dashboard', '◧', 'Mis KPI']];
+      : [['#/', '⌂', 'Mi ruta'], ['#/visitas', '☰', 'Visitas'], ['#/mi-dashboard', '◧', 'Mis KPI']];
   const cur = location.hash || '#/';
   const on = (h) => (cur === h || (h !== '#/' && cur.startsWith(h)) ? 'on' : '');
   return {
@@ -178,7 +178,7 @@ async function route() {
   const [, a, b] = h.split('/');
   try {
     if (!a) return isStaff() ? (location.hash = '#/dashboard') : viewHome();
-    if (a === 'nueva') return viewNew();
+    if (a === 'nueva') { if (!isStaff()) { toast('Las visitas se inician desde una solicitud asignada', true); location.hash = '#/'; return; } return viewNew(); }
     if (a === 'visita') return viewVisit(+b);
     if (a === 'visitas') return viewVisits(+b || null);
     if (a === 'dashboard') return viewDashboard({});
@@ -217,7 +217,7 @@ async function viewHome() {
         <ul class="list" id="rtList" style="margin-top:6px"></ul>` : '<div class="empty">No tienes visitas asignadas para hoy. Tu supervisor te las asignará aquí.</div>'}
     </div>
     ${later.length ? `<div class="card" style="margin-top:14px"><h2>Próximas visitas</h2><ul class="list">${later.map((q) => reqItem(q, true)).join('')}</ul></div>` : ''}
-    <a class="btn big" href="#/nueva" style="margin-top:14px">＋ Iniciar visita sin solicitud</a>
+    <p class="faint" style="margin:14px 2px 0;font-size:13.5px">Las visitas se inician solo desde una solicitud asignada. ¿Te piden un trabajo que no aparece aquí? Pídele a tu supervisor que te lo asigne.</p>
     <div class="card" style="margin-top:14px"><h2>Últimas visitas</h2>
       ${done.length ? `<ul class="list">${done.slice(0, 10).map(visitItem).join('')}</ul>` : '<div class="empty">Aún no tienes visitas registradas.</div>'}</div>`);
   bindReqActions(viewHome);
@@ -330,7 +330,7 @@ async function viewNew() {
   S.clients = clients;
   const techs = users.filter((u) => u.active);
   layout(`
-    <div class="head"><div><h1>Nueva visita</h1><p>Al presionar <b>Iniciar visita</b> se registran la hora, tu ubicación GPS y el clima exterior.</p></div></div>
+    <div class="head"><div><h1>Registrar visita</h1><p>Registro manual de una visita a nombre de un técnico. Se crea automáticamente su solicitud, para que toda visita quede autorizada.</p></div></div>
     <form id="nf" class="stack" style="max-width:720px">
       <div class="card"><h2>1 · Tipo de visita</h2>
         <div class="types">${Object.entries(S.cat.visitTypes).map(([k, t]) => `<button type="button" data-type="${k}"><i style="background:var(--t-${k})"></i>${esc(t.label)}</button>`).join('')}</div>
@@ -347,7 +347,7 @@ async function viewNew() {
         <div class="fields">
           <div><label>Folio de la operación</label><input name="folio" value="${esc(folio)}" class="num"></div>
           <div><label>Prioridad</label><select name="priority"><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="baja">Baja</option></select></div>
-          ${isStaff() ? `<div><label>Técnico asignado</label><select name="technician_id">${techs.map((u) => `<option value="${u.id}" ${u.id === S.me.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></div>` : ''}
+          ${isStaff() ? `<div><label>Técnico que realizó la visita</label><select name="technician_id" required><option value="">Selecciona…</option>${techs.filter((u) => u.role === 'tecnico').map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select></div>` : ''}
         </div>
         <div class="field" style="margin-top:12px"><label id="reasonL">Motivo / falla reportada</label><textarea name="reason" placeholder="Ej: cámara N°2 no baja de 8 °C desde la mañana"></textarea></div>
       </div>
