@@ -332,3 +332,7 @@ a.btn.disabled { pointer-events: none; opacity: .5; }
 .addr-st .btn.sm { margin-left: 6px; padding: 2px 8px; min-height: 0; }
 .mp.need { border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .mp-map { cursor: crosshair; }
+
+/* Planilla de mediciones: marca de guardado por casilla */
+.qm .unit { position: relative; }
+.qm-ok { position: absolute; right: -2px; top: -8px; font-style: normal; font-size: 12px; font-weight: 700; color: var(--ok); }

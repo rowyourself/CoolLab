@@ -592,20 +592,15 @@ function renderVisit(v) {
       ${v.report_token ? `<button class="btn" id="share">🔗 Compartir con cliente</button>` : ''}
       ${isStaff() ? `<button class="btn" id="reopen">Reabrir</button>` : ''}</div>` : ''}
 
-    <div class="card" style="margin-top:14px"><h2>Indicadores en vivo</h2>
-      ${v.alerts.map((a) => `<div class="alert">⚠ ${esc(a)}</div>`).join('')}
-      <div class="kpis" style="margin-top:${v.alerts.length ? 12 : 0}px">${v.kpis.filter((k) => k.key !== 'duracion').map((k) => `
-        <div class="kpi"><div class="l"><span>${esc(k.label)}</span>${k.status ? `<span class="chip ${kpiStatus[k.status][0]}">${kpiStatus[k.status][1]}</span>` : ''}</div>
-        <div class="val">${k.value ?? '—'} <small>${esc(k.unit)}</small></div>
-        <div class="ref">${k.ideal ? 'Ref. ' + esc(k.ideal) : ''}${k.note ? (k.ideal ? ' · ' : '') + esc(k.note) : ''}</div></div>`).join('') || '<div class="faint">Registra mediciones para calcular recalentamiento, subenfriamiento, ΔT, cumplimiento de setpoint y más.</div>'}</div>
-    </div>
+    <div class="card" style="margin-top:14px" id="kpiCard">${kpiCardInner(v)}</div>
 
     <div class="grid g2" style="margin-top:14px;align-items:start">
       <div class="card"><h2>Mediciones</h2>
         ${edit ? `<p class="faint" style="margin:-6px 0 10px">Lee cada instrumento (termómetro, higrómetro, manómetro, pinza amperimétrica, anemómetro) y escribe el valor. Deja en blanco lo que no midas.</p>
         <div class="seg" id="phaseSeg"><button type="button" data-ph="inicial" class="on">Al llegar (inicial)</button><button type="button" data-ph="final">Al terminar (final)</button></div>
-        <form id="mq">${quickMeasFields()}
-          <button class="btn dark big" style="margin-top:14px">Guardar mediciones</button></form>
+        <form id="mq">${quickMeasFields(quickVals(v, S.lastPhase || 'inicial'))}
+          <p class="faint" id="mqSt" style="margin:12px 0 0;font-size:13px">Cada valor se guarda solo al salir de la casilla.</p>
+          <button class="btn dark big" style="margin-top:10px">Guardar mediciones</button></form>
         <details style="margin-top:12px"><summary class="faint" style="cursor:pointer">Agregar una medición en un punto específico (ej. puerta, fondo de cámara)</summary>
         <form id="mf" class="fields" style="grid-template-columns:1fr 1fr;margin-top:10px">
           <div style="grid-column:1/-1"><label>Variable</label><select name="kind">${groupedMeasOptions()}</select></div>
@@ -670,7 +665,13 @@ function renderVisit(v) {
   };
   tick(); if (live) S.timer = setInterval(tick, 1000);
 
-  const refresh = (nv) => { const y = window.scrollY; renderVisit(nv); window.scrollTo(0, y); };
+  // Antes de redibujar la visita, guardar lo que quede escrito en la planilla de mediciones (si no, se perdería)
+  const refresh = async (nv) => {
+    const pending = $$('#mq input.num').some((i) => i.value.trim() !== (i.dataset.saved || ''));
+    if (pending && S.flushMeas) { try { await S.flushMeas(); nv = await api('/visits/' + v.id); } catch (err) { toast(err.message, true); } }
+    const y = window.scrollY; renderVisit(nv); window.scrollTo(0, y);
+  };
+  S.flushMeas = null;
 
   if (live) $('#goFinish').onclick = () => $('#ff').scrollIntoView({ behavior: 'smooth' });
   if (!live) {
@@ -685,25 +686,51 @@ function renderVisit(v) {
 
   // Planilla rápida de mediciones
   let phase = S.lastPhase || 'inicial';
+  // Mediciones: cada casilla se guarda sola al salir de ella (y antes de cambiar de fase o terminar la visita)
+  const mqSt = (t, bad) => { const el = $('#mqSt'); if (el) { el.textContent = t; el.style.color = bad ? 'var(--bad)' : ''; } };
+  const afterMeas = (nv) => {
+    v.measurements = nv.measurements; v.kpis = nv.kpis; v.alerts = nv.alerts;
+    $('#mlist').innerHTML = measList(nv, edit); bindDelM();
+    if ($('#kpiCard')) $('#kpiCard').innerHTML = kpiCardInner(nv);
+  };
+  const dirty = () => $$('#mq input.num').filter((i) => i.value.trim() !== (i.dataset.saved || ''));
+  const saveMeas = async (inputs) => {
+    const list = inputs.map((i) => ({ kind: i.name, value: i.value.trim().replace(',', '.'), phase, replace: true }));
+    const bad = list.find((m) => m.value !== '' && isNaN(+m.value));
+    if (bad) { mqSt(`"${S.cat.measurements[bad.kind].label}" no es un número válido`, true); throw new Error('Hay un valor que no es número'); }
+    if (!list.length) return;
+    mqSt('Guardando…');
+    const nv = await api(`/visits/${v.id}/measurements`, { method: 'POST', body: list });
+    inputs.forEach((i) => { i.dataset.saved = i.value.trim(); const ok = i.parentElement.querySelector('.qm-ok'); if (ok) ok.textContent = i.value.trim() ? '✓' : ''; });
+    afterMeas(nv);
+    mqSt(`✓ Guardado (${phase === 'final' ? 'al terminar' : 'al llegar'}) · ${new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`);
+  };
+  let measQ = Promise.resolve();
+  const flushMeas = () => (measQ = measQ.then(() => (dirty().length ? saveMeas(dirty()) : null)));
+  S.flushMeas = flushMeas;
+  const fillPhase = () => { const vals = quickVals(v, phase); $$('#mq input.num').forEach((i) => { const x = vals[i.name] ?? ''; i.value = x; i.dataset.saved = String(x); const ok = i.parentElement.querySelector('.qm-ok'); if (ok) ok.textContent = x !== '' ? '✓' : ''; }); };
   const setPhase = (ph) => { phase = S.lastPhase = ph; $$('#phaseSeg button').forEach((b) => b.classList.toggle('on', b.dataset.ph === ph)); };
   setPhase(phase);
-  $$('#phaseSeg button').forEach((b) => (b.onclick = () => setPhase(b.dataset.ph)));
+  $$('#phaseSeg button').forEach((b) => (b.onclick = async () => {
+    if (b.dataset.ph === phase) return;
+    try { await flushMeas(); } catch (err) { return toast(err.message, true); }
+    setPhase(b.dataset.ph); fillPhase(); mqSt('Cada valor se guarda solo al salir de la casilla.');
+  }));
+  $$('#mq input.num').forEach((i) => (i.onchange = () => { measQ = measQ.then(() => saveMeas([i])).catch((err) => { mqSt(err.message, true); }); }));
   $('#mq').onsubmit = async (e) => {
     e.preventDefault();
-    const list = Object.entries(formData(e.target)).filter(([, x]) => x.trim() !== '').map(([kind, x]) => ({ kind, value: x.replace(',', '.'), phase }));
-    if (!list.length) return toast('Escribe al menos un valor', true);
-    if (list.some((m) => isNaN(+m.value))) return toast('Hay un valor que no es número', true);
-    try { const nv = await api(`/visits/${v.id}/measurements`, { method: 'POST', body: list }); toast(`${list.length} medición(es) guardadas (${phase})`); refresh(nv); }
-    catch (err) { toast(err.message, true); }
+    if (!dirty().length) return toast('No hay cambios pendientes: las mediciones ya están guardadas');
+    try { await flushMeas(); toast('Mediciones guardadas'); } catch (err) { toast(err.message, true); }
   };
   // Medición individual con punto
   $('#mf').onsubmit = async (e) => {
     e.preventDefault();
     const b = formData(e.target); b.value = b.value.replace(',', '.');
-    try { const nv = await api(`/visits/${v.id}/measurements`, { method: 'POST', body: b }); toast('Medición registrada'); refresh(nv); $('#mf [name=kind]').value = b.kind; $('#mf [name=phase]').value = b.phase; }
+    try { const nv = await api(`/visits/${v.id}/measurements`, { method: 'POST', body: b }); toast('Medición registrada'); afterMeas(nv); $('#mf [name=value]').value = ''; $('#mf [name=point]').value = ''; }
     catch (err) { toast(err.message, true); }
   };
-  $$('[data-delm]').forEach((x) => (x.onclick = async () => refresh(await api('/measurements/' + x.dataset.delm, { method: 'DELETE' }))));
+  const bindDelM = () => $$('[data-delm]').forEach((x) => (x.onclick = async () => { afterMeas(await api('/measurements/' + x.dataset.delm, { method: 'DELETE' })); fillPhase(); }));
+  bindDelM();
 
   // Fotos
   $$('#pf input[type=file]').forEach((inp) => (inp.onchange = async () => {
@@ -757,9 +784,12 @@ function renderVisit(v) {
   $('#ff').onsubmit = async (e) => {
     e.preventDefault();
     const b = formData(e.target);
+    // Primero se guardan las mediciones escritas (aunque luego se cancele el término)
+    if (S.flushMeas) { try { await S.flushMeas(); } catch (err) { return toast(err.message, true); } }
     if (!v.photos.length && !confirm('La visita no tiene fotos. ¿Terminar de todas formas?')) return;
     busy($('#finBtn'), true, 'Generando informe…');
     try {
+      if (S.flushMeas) await S.flushMeas();
       await saveDetail(true);
       const loc = await stampLocation('terminar la visita');
       if (!loc) return busy($('#finBtn'), false);
@@ -787,16 +817,30 @@ function partRow(p, i, edit) {
   return `<div class="row prow" style="flex-wrap:nowrap;margin-bottom:6px"><input data-pn value="${esc(p.name)}" placeholder="Descripción" ${edit ? '' : 'readonly'}>
     <input data-pq value="${esc(p.qty)}" style="width:80px" inputmode="decimal" ${edit ? '' : 'readonly'}>${edit ? '<button type="button" class="btn sm" data-delpart>✕</button>' : ''}</div>`;
 }
-function quickMeasFields() {
+// Último valor guardado de cada variable en la fase indicada (sin punto específico)
+function quickVals(v, ph) {
+  const o = {};
+  (v.measurements || []).filter((m) => m.phase === ph && !m.point).forEach((m) => (o[m.kind] = m.value));
+  return o;
+}
+function quickMeasFields(vals = {}) {
   const g = {};
   Object.entries(S.cat.measurements).forEach(([k, m]) => (g[m.group] ||= []).push(`<div class="qm"><label for="q_${k}">${esc(m.label)}</label>
-    <div class="unit"><input id="q_${k}" name="${k}" inputmode="decimal" autocomplete="off" class="num"><span>${esc(m.unit)}</span></div></div>`));
+    <div class="unit"><input id="q_${k}" name="${k}" inputmode="decimal" autocomplete="off" class="num" value="${esc(vals[k] ?? '')}" data-saved="${esc(vals[k] ?? '')}"><span>${esc(m.unit)}</span><i class="qm-ok" aria-hidden="true">${vals[k] != null ? '✓' : ''}</i></div></div>`));
   return Object.entries(g).map(([n, f]) => `<div class="meas-group">${esc(n)}</div><div class="qgrid">${f.join('')}</div>`).join('');
 }
 function groupedMeasOptions() {
   const g = {};
   Object.entries(S.cat.measurements).forEach(([k, m]) => (g[m.group] ||= []).push(`<option value="${k}">${esc(m.label)} (${m.unit})</option>`));
   return Object.entries(g).map(([n, o]) => `<optgroup label="${esc(n)}">${o.join('')}</optgroup>`).join('');
+}
+function kpiCardInner(v) {
+  return `<h2>Indicadores en vivo</h2>
+      ${v.alerts.map((a) => `<div class="alert">⚠ ${esc(a)}</div>`).join('')}
+      <div class="kpis" style="margin-top:${v.alerts.length ? 12 : 0}px">${v.kpis.filter((k) => k.key !== 'duracion').map((k) => `
+        <div class="kpi"><div class="l"><span>${esc(k.label)}</span>${k.status ? `<span class="chip ${kpiStatus[k.status][0]}">${kpiStatus[k.status][1]}</span>` : ''}</div>
+        <div class="val">${k.value ?? '—'} <small>${esc(k.unit)}</small></div>
+        <div class="ref">${k.ideal ? 'Ref. ' + esc(k.ideal) : ''}${k.note ? (k.ideal ? ' · ' : '') + esc(k.note) : ''}</div></div>`).join('') || '<div class="faint">Registra mediciones para calcular recalentamiento, subenfriamiento, ΔT, cumplimiento de setpoint y más.</div>'}</div>`;
 }
 function measList(v, edit) {
   if (!v.measurements.length) return '<div class="faint" style="margin-top:12px">Sin mediciones aún.</div>';

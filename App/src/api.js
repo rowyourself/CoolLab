@@ -462,9 +462,13 @@ r.post('/visits/:id/measurements', (req, res) => {
   if (!canEdit(v, req.user)) return res.status(403).json(LOCKED);
   const list = Array.isArray(req.body) ? req.body : [req.body];
   const ins = db.prepare('INSERT INTO measurements(visit_id,kind,value,unit,point,phase,taken_at) VALUES(?,?,?,?,?,?,?)');
+  // replace: la planilla rápida guarda UN valor por variable y fase (reemplaza el anterior; vacío = borrar)
+  const del = db.prepare('DELETE FROM measurements WHERE visit_id=? AND kind=? AND phase=? AND point IS NULL');
   const tx = db.transaction(() => list.forEach((m) => {
     const def = cat.MEASUREMENTS[m.kind];
-    if (!def || num(m.value) == null) return;
+    if (!def) return;
+    if (m.replace && !m.point) del.run(v.id, m.kind, m.phase === 'final' ? 'final' : 'inicial');
+    if (num(m.value) == null) return;
     ins.run(v.id, m.kind, num(m.value), def.unit, m.point || null, m.phase === 'final' ? 'final' : 'inicial', m.taken_at || new Date().toISOString());
   }));
   tx();
