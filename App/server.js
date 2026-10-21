@@ -1,6 +1,7 @@
 require('dotenv').config({ quiet: true });
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const cookieParser = require('cookie-parser');
 const db = require('./src/db');
 const { hash } = require('./src/auth');
@@ -26,8 +27,17 @@ app.get('/vendor/chart.umd.js', (req, res) => res.sendFile(nm('chart.js/dist/cha
 app.use('/vendor/plex-sans', express.static(nm('@fontsource/ibm-plex-sans')));
 app.use('/vendor/plex-mono', express.static(nm('@fontsource/ibm-plex-mono')));
 app.use('/vendor/leaflet', express.static(nm('leaflet/dist')));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
-app.get('/{*splat}', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// index.html con versión en app.js y styles.css: así cada publicación se ve al tiro,
+// aunque Cloudflare o el navegador guarden copias de esos archivos por horas.
+const PUB = path.join(__dirname, 'public');
+const VERSION = require('crypto').createHash('sha1')
+  .update(fs.readFileSync(path.join(PUB, 'app.js'))).update(fs.readFileSync(path.join(PUB, 'styles.css'))).digest('hex').slice(0, 10);
+const INDEX = fs.readFileSync(path.join(PUB, 'index.html'), 'utf8')
+  .replace('src="/app.js"', `src="/app.js?v=${VERSION}"`).replace('href="/styles.css"', `href="/styles.css?v=${VERSION}"`);
+const sendIndex = (req, res) => { res.set('Cache-Control', 'no-cache'); res.type('html').send(INDEX); };
+app.get(['/', '/index.html'], sendIndex);
+app.use(express.static(PUB, { extensions: ['html'], index: false }));
+app.get('/{*splat}', sendIndex);
 
 app.use((err, req, res, next) => {
   console.error(err);
