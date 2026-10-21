@@ -155,4 +155,30 @@ CREATE INDEX IF NOT EXISTS idx_req_status ON requests(status);
 `);
 if (!db.prepare('PRAGMA table_info(visits)').all().some((c) => c.name === 'request_id')) db.exec('ALTER TABLE visits ADD COLUMN request_id INTEGER');
 
+// Regularización: toda visita debe tener su solicitud. Las visitas antiguas que se hicieron sin solicitud
+// reciben una solicitud creada automáticamente y marcada como "regularizada" (se ejecuta al arrancar y es idempotente).
+if (!db.prepare('PRAGMA table_info(requests)').all().some((c) => c.name === 'regularized')) db.exec('ALTER TABLE requests ADD COLUMN regularized INTEGER NOT NULL DEFAULT 0');
+(function regularizeVisits() {
+  const orphans = db.prepare('SELECT * FROM visits WHERE request_id IS NULL ORDER BY started_at, id').all();
+  if (!orphans.length) return;
+  const count = db.prepare('SELECT COUNT(*) n FROM requests WHERE code LIKE ?');
+  const exists = db.prepare('SELECT 1 FROM requests WHERE code=?');
+  const ins = db.prepare(`INSERT INTO requests(code,type,client_id,equipment_id,technician_id,priority,scheduled_date,description,status,visit_id,created_by,created_at,updated_at,regularized)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),1)`);
+  const link = db.prepare('UPDATE visits SET request_id=? WHERE id=?');
+  const status = { en_curso: 'en_curso', finalizada: 'completada', anulada: 'cancelada' };
+  db.transaction(() => {
+    for (const v of orphans) {
+      const y = String(v.started_at).slice(0, 4);
+      let n = count.get(`SOL-${y}-%`).n + 1, code;
+      do { code = `SOL-${y}-${String(n++).padStart(5, '0')}`; } while (exists.get(code));
+      const desc = 'Regularización: visita registrada sin solicitud previa.' + (v.reason ? ' Motivo: ' + v.reason : '');
+      const id = ins.run(code, v.type, v.client_id, v.equipment_id, v.technician_id, v.priority || 'normal', String(v.started_at).slice(0, 10),
+        desc, status[v.status] || 'completada', v.id, v.created_by || null, String(v.started_at).replace('T', ' ').slice(0, 19)).lastInsertRowid;
+      link.run(id, v.id);
+    }
+  })();
+  console.log(`Regularización: ${orphans.length} visita(s) antigua(s) recibieron su solicitud.`);
+})();
+
 module.exports = db;

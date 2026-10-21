@@ -292,7 +292,8 @@ const numIcon = (n, urgent) => L.divIcon({ className: '', html: `<div class="pin
 const PRIO = { urgente: ['bad', 'Urgente'], alta: ['warn', 'Alta'], normal: ['', 'Normal'], baja: ['', 'Baja'] };
 const REQST = { pendiente: ['warn', 'Sin asignar'], asignada: ['live', 'Asignada'], en_curso: ['live', 'En curso'], completada: ['ok', '✓ Completada'], cancelada: ['', 'Cancelada'] };
 const prioChip = (p) => p && p !== 'normal' ? `<span class="chip ${PRIO[p]?.[0] || ''}">${esc(PRIO[p]?.[1] || p)}</span>` : '';
-const reqChip = (q) => `<span class="chip ${REQST[q.status][0]}">${q.status === 'en_curso' ? '<i></i>' : ''}${REQST[q.status][1]}</span>`;
+const reqChip = (q) => `<span class="chip ${REQST[q.status][0]}">${q.status === 'en_curso' ? '<i></i>' : ''}${REQST[q.status][1]}</span>`
+  + (q.regularized ? '<span class="chip" title="Solicitud creada automáticamente para una visita antigua hecha sin solicitud">Regularizada</span>' : '');
 function reqItem(q, techView, lead = '', extra = '') {
   const late = q.scheduled_date && q.scheduled_date < todayISO() && ['asignada', 'en_curso', 'pendiente'].includes(q.status);
   const nav = q.client_lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${q.client_lat},${q.client_lng}&travelmode=driving` : null;
@@ -1017,7 +1018,7 @@ async function viewRequests() {
     <div class="card" style="margin-top:14px">
       <form class="filters" id="rf">
         <div><label>Buscar</label><input name="q" placeholder="Código, empresa o descripción"></div>
-        <div><label>Estado</label><select name="status"><option value="abiertas">Abiertas</option><option value="">Todas</option>${Object.entries(REQST).map(([k, [, l]]) => `<option value="${k}">${esc(l.replace('✓ ', ''))}</option>`).join('')}</select></div>
+        <div><label>Estado</label><select name="status"><option value="abiertas">Abiertas</option><option value="">Todas</option>${Object.entries(REQST).map(([k, [, l]]) => `<option value="${k}">${esc(l.replace('✓ ', ''))}</option>`).join('')}<option value="regularizadas">Regularizadas</option></select></div>
         <div><label>Técnico</label><select name="technician_id"><option value="">Todos</option>${team.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
       </form>
       <ul class="list" id="rl"></ul>
@@ -1077,6 +1078,7 @@ async function requestDialog(q, done) {
   const [clients, team] = await Promise.all([api('/clients'), api('/team')]);
   const types = Object.entries(S.cat.visitTypes);
   const d = dialog(`<h2>${isNew ? 'Nueva solicitud' : esc(q.code)} ${!isNew ? reqChip(q) : ''}</h2>
+    ${q.regularized ? '<p class="faint" style="margin:-6px 0 12px">Solicitud creada automáticamente para documentar una visita antigua que se hizo sin solicitud previa.</p>' : ''}
     ${q.visit_id ? `<p><a href="#/visita/${q.visit_id}" data-go>Ver visita ${esc(q.visit_folio || '')} ↗</a></p>` : ''}
     <div class="field"><label>Tipo de visita</label><select name="type" required ${closed ? 'disabled' : ''}>${types.map(([k, t]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></div>
     <div class="field"><label>Empresa</label><div class="row" style="flex-wrap:nowrap"><select name="client_id" required ${closed ? 'disabled' : ''}><option value="">Selecciona…</option>${clients.map((c) => `<option value="${c.id}" ${q.client_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>

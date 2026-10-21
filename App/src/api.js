@@ -353,7 +353,9 @@ r.post('/visits/:id/reopen', requireRole('admin', 'supervisor'), (req, res) => {
 r.post('/visits/:id/cancel', requireRole('admin', 'supervisor'), (req, res) => {
   db.prepare("UPDATE visits SET status='anulada' WHERE id=?").run(req.params.id);
   // La solicitud vuelve a quedar asignada para que se pueda volver a ejecutar
-  db.prepare("UPDATE requests SET status=CASE WHEN technician_id IS NULL THEN 'pendiente' ELSE 'asignada' END, visit_id=NULL, updated_at=datetime('now') WHERE visit_id=?").run(req.params.id);
+  // Una solicitud regularizada (creada solo para documentar una visita antigua) se cancela junto con su visita
+  db.prepare("UPDATE requests SET status='cancelada', updated_at=datetime('now') WHERE visit_id=? AND regularized=1").run(req.params.id);
+  db.prepare("UPDATE requests SET status=CASE WHEN technician_id IS NULL THEN 'pendiente' ELSE 'asignada' END, visit_id=NULL, updated_at=datetime('now') WHERE visit_id=? AND regularized=0").run(req.params.id);
   res.json({ ok: true });
 });
 
@@ -382,6 +384,7 @@ function loadRequest(id, u) {
 r.get('/requests', (req, res) => {
   const p = {}; const w = [reqScope(req.user, p)];
   if (req.query.status === 'abiertas') w.push("r.status IN ('pendiente','asignada','en_curso')");
+  else if (req.query.status === 'regularizadas') w.push('r.regularized=1');
   else if (req.query.status) { w.push('r.status=@st'); p.st = req.query.status; }
   if (req.query.technician_id && req.user.role !== 'tecnico') { w.push('r.technician_id=@t'); p.t = +req.query.technician_id; }
   if (req.query.client_id) { w.push('r.client_id=@c'); p.c = +req.query.client_id; }
