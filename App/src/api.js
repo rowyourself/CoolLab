@@ -391,11 +391,32 @@ r.get('/requests', (req, res) => {
   if (req.query.type && cat.VISIT_TYPES[req.query.type]) { w.push('r.type=@rty'); p.rty = req.query.type; }
   if (req.query.result && cat.RESULTS[req.query.result]) { w.push('v.result=@res'); p.res = req.query.result; }
   if (req.query.q) { w.push('(r.code LIKE @q OR c.name LIKE @q OR r.description LIKE @q)'); p.q = `%${req.query.q}%`; }
+  // Rango de fecha programada (YYYY-MM-DD, inclusive): sirve para "atrasadas" (hasta ayer) y "próximas" (desde hoy)
+  const isoDate = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ''));
+  if (isoDate(req.query.sched_from)) { w.push('r.scheduled_date >= @sf'); p.sf = req.query.sched_from; }
+  if (isoDate(req.query.sched_to)) { w.push('r.scheduled_date <= @stt'); p.stt = req.query.sched_to; }
   res.json(db.prepare(`${REQ_SELECT} WHERE ${w.join(' AND ')}
     ORDER BY CASE r.status WHEN 'pendiente' THEN ${req.user.role === 'tecnico' ? 2 : -1} WHEN 'en_curso' THEN 0 WHEN 'asignada' THEN 1 WHEN 'completada' THEN 3 ELSE 4 END,
       CASE r.priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, COALESCE(r.scheduled_date,'9999'), r.id DESC
     LIMIT ${Math.min(+req.query.limit || 300, 1000)}`).all(p));
 });
+// Mantenciones sugeridas: próxima visita recomendada en el último informe de cada equipo, que aún no tiene solicitud abierta
+r.get('/maintenance-due', requireRole('admin', 'supervisor'), (req, res) => {
+  const days = Math.min(Math.max(+req.query.days || 30, 1), 365);
+  const until = new Intl.DateTimeFormat('en-CA', { timeZone: process.env.TZ || 'America/Santiago' }).format(new Date(Date.now() + days * 86400000));
+  const rows = db.prepare(`
+    SELECT v.id AS visit_id, v.folio, v.next_visit_date, v.client_id, v.equipment_id, c.name AS client_name, c.address AS client_address, e.name AS equipment_name
+    FROM visits v JOIN clients c ON c.id = v.client_id LEFT JOIN equipment e ON e.id = v.equipment_id
+    WHERE v.next_visit_date IS NOT NULL AND v.status != 'anulada'
+      AND v.next_visit_date <= @until
+      AND v.started_at = (SELECT MAX(v2.started_at) FROM visits v2 WHERE v2.next_visit_date IS NOT NULL AND v2.status != 'anulada'
+        AND v2.client_id = v.client_id AND COALESCE(v2.equipment_id, 0) = COALESCE(v.equipment_id, 0))
+      AND NOT EXISTS (SELECT 1 FROM requests r WHERE r.client_id = v.client_id AND COALESCE(r.equipment_id, 0) = COALESCE(v.equipment_id, 0)
+        AND r.status IN ('pendiente','asignada','en_curso') AND r.type = 'mantencion')
+    ORDER BY v.next_visit_date LIMIT 50`).all({ until });
+  res.json(rows);
+});
+
 r.get('/requests/:id', (req, res) => {
   const q = loadRequest(req.params.id, req.user);
   if (!q) return res.status(404).json({ error: 'Solicitud no encontrada' });

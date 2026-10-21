@@ -139,9 +139,9 @@ function nav() {
   const staff = isStaff();
   // Cada perfil tiene su propio menú
   const items = S.me.role === 'admin'
-    ? [['#/dashboard', '◧', 'Dashboard'], ['#/solicitudes', '✎', 'Solicitudes'], ['#/equipo', '◉', 'Técnicos'], ['#/visitas', '☰', 'Visitas'], ['#/clientes', '▣', 'Clientes'], ['#/usuarios', '⚙', 'Usuarios']]
+    ? [['#/dashboard', '◧', 'Dashboard'], ['#/solicitudes', '✎', 'Solicitudes'], ['#/proximas', '▤', 'Próximas'], ['#/equipo', '◉', 'Técnicos'], ['#/visitas', '☰', 'Visitas'], ['#/clientes', '▣', 'Clientes'], ['#/usuarios', '⚙', 'Usuarios']]
     : staff
-      ? [['#/dashboard', '◧', 'Dashboard'], ['#/solicitudes', '✎', 'Solicitudes'], ['#/equipo', '◉', 'Mi equipo'], ['#/visitas', '☰', 'Visitas'], ['#/clientes', '▣', 'Clientes']]
+      ? [['#/dashboard', '◧', 'Dashboard'], ['#/solicitudes', '✎', 'Solicitudes'], ['#/proximas', '▤', 'Próximas'], ['#/equipo', '◉', 'Mi equipo'], ['#/visitas', '☰', 'Visitas'], ['#/clientes', '▣', 'Clientes']]
       : [['#/', '⌂', 'Mi ruta'], ['#/visitas', '☰', 'Visitas'], ['#/mi-dashboard', '◧', 'Mis KPI']];
   const cur = location.hash || '#/';
   const on = (h) => (cur === h || (h !== '#/' && cur.startsWith(h)) ? 'on' : '');
@@ -151,7 +151,7 @@ function nav() {
       <div class="me"><b>${esc(S.me.name)}</b>${esc({ admin: 'Administrador', supervisor: 'Supervisor', tecnico: 'Técnico' }[S.me.role])}
       <div style="margin-top:8px"><a href="#/cuenta" style="padding:0;display:inline">Mi cuenta</a> · <a href="#" data-logout style="padding:0;display:inline">Salir</a></div></div></aside>`,
     top: `<div class="topbar">${LOGO}<span>CoolLab</span><span class="sp"></span><button onclick="location.hash='#/cuenta'">${esc(S.me.name.split(' ')[0])}</button></div>`,
-    tab: `<nav class="tabbar">${items.slice(0, 6).map(([h, ic, l]) => `<a href="${h}" class="${on(h)}"><span>${ic}${h === '#/solicitudes' ? '<b class="nbadge" data-nb hidden></b>' : ''}</span>${l}</a>`).join('')}</nav>`,
+    tab: `<nav class="tabbar">${items.slice(0, 7).map(([h, ic, l]) => `<a href="${h}" class="${on(h)}"><span>${ic}${h === '#/solicitudes' ? '<b class="nbadge" data-nb hidden></b>' : ''}</span>${l}</a>`).join('')}</nav>`,
   };
 }
 
@@ -184,7 +184,8 @@ async function route() {
     if (a === 'dashboard') return viewDashboard({});
     if (a === 'mi-dashboard') return viewDashboard({ technician_id: S.me.id, mine: true });
     if (a === 'tecnico') return viewDashboard({ technician_id: +b });
-    if (a === 'solicitudes' && isStaff()) return viewRequests();
+    if (a === 'solicitudes' && isStaff()) return b && REQ_PANELS[b] ? viewRequestPanel(b) : viewRequests();
+    if (a === 'proximas' && isStaff()) return viewUpcoming();
     if (a === 'equipo' && isStaff()) return viewTeam();
     if (a === 'clientes') return viewClients();
     if (a === 'cliente') return viewClient(+b);
@@ -1076,10 +1077,7 @@ async function viewRequests() {
     const f = Object.fromEntries(Object.entries(formData($('#rf'))).filter(([, x]) => x));
     let [rows, all] = await Promise.all([api('/requests?' + new URLSearchParams(f)), api('/requests?status=abiertas')]);
     const today = todayISO();
-    $('#rqT').innerHTML = tile('Sin asignar', all.filter((q) => q.status === 'pendiente').length, '', 'Esperando técnico')
-      + tile('Asignadas', all.filter((q) => q.status === 'asignada').length, '', 'Por iniciar')
-      + tile('En curso', all.filter((q) => q.status === 'en_curso').length, '', 'Técnico en terreno')
-      + tile('Atrasadas', all.filter((q) => q.scheduled_date && q.scheduled_date < today).length, '', 'Fecha vencida');
+    $('#rqT').innerHTML = reqTiles(all);
     // Las solicitudes en curso se muestran solo en "Ahora en terreno" (salvo que se filtre explícitamente por En curso)
     const enTerreno = f.status === 'en_curso' ? 0 : rows.filter((q) => q.status === 'en_curso').length;
     if (f.status !== 'en_curso') rows = rows.filter((q) => q.status !== 'en_curso');
@@ -1170,6 +1168,183 @@ async function requestDialog(q, done) {
   const cb = $('[data-cancel]', d);
   if (cb) cb.onclick = async () => { if (!confirm('¿Cancelar esta solicitud?')) return; try { await api('/requests/' + q.id, { method: 'PUT', body: { status: 'cancelada' } }); toast('Solicitud cancelada'); d.close(); done && done(); } catch (e) { toast(e.message, true); } };
   const go = $('[data-go]', d); if (go) go.onclick = () => d.close();
+}
+
+// ---------- Paneles por estado (se abren al pinchar las tarjetas de Solicitudes) ----------
+const addDays = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00') - new Date(a + 'T12:00')) / 86400000);
+const REQ_PANELS = {
+  'sin-asignar': { title: 'Sin asignar', hint: 'Esperando técnico', sub: 'Solicitudes abiertas que todavía no tienen técnico. Pincha una para asignarla.', cls: 'warn', match: (q) => q.status === 'pendiente' },
+  asignadas: { title: 'Asignadas', hint: 'Por iniciar', sub: 'Solicitudes con técnico asignado que aún no se inician.', cls: '', match: (q) => q.status === 'asignada' },
+  'en-curso': { title: 'En curso', hint: 'Técnico en terreno', sub: 'Visitas que se están haciendo en este momento. Pincha una para ver la visita.', cls: 'live', match: (q) => q.status === 'en_curso' },
+  atrasadas: { title: 'Atrasadas', hint: 'Fecha vencida', sub: 'Solicitudes abiertas cuya fecha programada ya pasó y aún no se completan.', cls: 'bad', match: (q, today) => q.scheduled_date && q.scheduled_date < today },
+};
+function tileLink(href, k, v, hint, cls = '', on = false) {
+  return `<a class="tile tlink ${cls}${on ? ' on' : ''}" href="${href}"><div class="k">${k}<span class="go">›</span></div><div class="v">${v ?? '—'}</div>${hint ? `<div class="h">${hint}</div>` : ''}</a>`;
+}
+function reqTiles(all, current) {
+  const today = todayISO();
+  return Object.entries(REQ_PANELS).map(([k, p]) => {
+    const n = all.filter((q) => p.match(q, today)).length;
+    return tileLink(`#/solicitudes/${k}`, p.title, n, k === 'atrasadas' ? (n ? p.hint : 'Al día') : p.hint, n && k === 'atrasadas' ? 'bad' : '', current === k);
+  }).join('');
+}
+
+async function viewRequestPanel(kind) {
+  const P = REQ_PANELS[kind];
+  const team = await api('/team');
+  layout(`
+    <div class="head"><div><a href="#/solicitudes" class="faint">← Todas las solicitudes</a><h1>Solicitudes ${esc(P.title.toLowerCase())} <span class="chip ${P.cls}" id="pc">…</span></h1><p>${P.sub}</p></div>
+      ${kind !== 'en-curso' ? '<button class="btn primary" id="nr">＋ Nueva solicitud</button>' : ''}</div>
+    <div class="grid g4" id="rqT"></div>
+    <div class="card" style="margin-top:14px">
+      <form class="filters" id="pf">
+        <div><label>Buscar</label><input name="q" placeholder="Código, empresa o descripción"></div>
+        <div><label>Tipo</label><select name="type"><option value="">Todos</option>${Object.entries(S.cat.visitTypes).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('')}</select></div>
+        <div><label>Prioridad</label><select name="priority"><option value="">Todas</option>${Object.entries(PRIO).map(([k, [, l]]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
+        ${kind !== 'sin-asignar' ? `<div><label>Técnico</label><select name="technician_id"><option value="">Todos</option>${team.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>` : ''}
+      </form>
+      <div id="psum"></div>
+      <ul class="list" id="pl"></ul>
+    </div>`);
+  const load = async () => {
+    const f = formData($('#pf'));
+    const all = await api('/requests?status=abiertas&limit=1000');
+    const today = todayISO();
+    $('#rqT').innerHTML = reqTiles(all, kind);
+    refreshActiveBadge(all);
+    const base = all.filter((q) => P.match(q, today));
+    const ql = (f.q || '').toLowerCase();
+    let rows = base.filter((q) => (!f.type || q.type === f.type) && (!f.priority || q.priority === f.priority)
+      && (!f.technician_id || q.technician_id === +f.technician_id)
+      && (!ql || [q.code, q.client_name, q.description].some((x) => String(x || '').toLowerCase().includes(ql))));
+    if (kind === 'atrasadas') rows.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+    $('#pc').textContent = base.length;
+    // Resumen del panel
+    let sum = '';
+    if (kind === 'atrasadas' && base.length) {
+      const late = base.map((q) => daysBetween(q.scheduled_date, today));
+      const byTech = {}; base.forEach((q) => { const k = q.tech_name || 'Sin técnico'; byTech[k] = (byTech[k] || 0) + 1; });
+      sum = `<div class="psum"><span>Atraso promedio <b class="num">${(late.reduce((a, x) => a + x, 0) / late.length).toFixed(1)}</b> días</span>
+        <span>Más antigua <b class="num">${Math.max(...late)}</b> días</span>
+        <span>Urgentes <b class="num">${base.filter((q) => q.priority === 'urgente').length}</b></span>
+        <span class="by">${Object.entries(byTech).sort((a, b) => b[1] - a[1]).map(([n, c]) => `<span class="chip ${n === 'Sin técnico' ? 'warn' : ''}">${esc(n)} · ${c}</span>`).join('')}</span></div>`;
+    } else if (kind === 'sin-asignar' && base.length) {
+      sum = `<div class="psum"><span>Urgentes <b class="num">${base.filter((q) => q.priority === 'urgente').length}</b></span>
+        <span>Para hoy o atrasadas <b class="num">${base.filter((q) => q.scheduled_date && q.scheduled_date <= today).length}</b></span>
+        <span>Técnicos disponibles <b class="num">${team.filter((t) => t.active && !t.en_curso).length}</b> de ${team.filter((t) => t.active).length}</span></div>`;
+    } else if (kind === 'asignadas' && base.length) {
+      sum = `<div class="psum"><span>Para hoy <b class="num">${base.filter((q) => q.scheduled_date === today).length}</b></span>
+        <span>Próximos días <b class="num">${base.filter((q) => q.scheduled_date > today).length}</b></span>
+        <span>Atrasadas <b class="num">${base.filter((q) => q.scheduled_date && q.scheduled_date < today).length}</b></span></div>`;
+    }
+    $('#psum').innerHTML = sum;
+    $('#pl').innerHTML = rows.length ? rows.map((q) => {
+      const extra = kind === 'atrasadas' ? `<b style="color:var(--bad)">${daysBetween(q.scheduled_date, today)} día${daysBetween(q.scheduled_date, today) === 1 ? '' : 's'} de atraso</b>`
+        : kind === 'en-curso' && q.visit_started_at ? `En terreno desde ${fmtDT(q.visit_started_at)}` : '';
+      return reqItem(q, false, '', extra);
+    }).join('') : `<div class="empty">${base.length ? 'Ninguna coincide con los filtros.' : kind === 'atrasadas' ? '✓ No hay solicitudes atrasadas.' : 'No hay solicitudes en este estado.'}</div>`;
+    $$('#pl li.req').forEach((li, i) => (li.onclick = () => (kind === 'en-curso' && rows[i].visit_id ? (location.hash = '#/visita/' + rows[i].visit_id) : requestDialog(rows[i], load))));
+  };
+  $('#pf').oninput = () => { clearTimeout(load.t); load.t = setTimeout(load, 200); };
+  const nb = $('#nr'); if (nb) nb.onclick = () => requestDialog(null, load);
+  S.timer = setInterval(() => { if (!$('dialog[open]')) load(); }, 60000);
+  load();
+}
+
+// ---------- Próximas: mini dashboard de solicitudes futuras ----------
+async function viewUpcoming() {
+  let horizon = 14; try { horizon = [7, 14, 30].includes(+sessionStorage.getItem('cl_hz')) ? +sessionStorage.getItem('cl_hz') : 14; } catch {}
+  const team = await api('/team');
+  layout(`
+    <div class="head"><div><h1>Próximas visitas</h1><p>Solicitudes programadas desde hoy en adelante y mantenciones que ya conviene agendar.</p></div>
+      <button class="btn primary" id="nr">＋ Nueva solicitud</button></div>
+    <div class="seg hz" id="hz">${[7, 14, 30].map((d) => `<button type="button" data-d="${d}">${d} días</button>`).join('')}</div>
+    <div class="grid g4" id="upT" style="margin-top:12px"></div>
+    <div class="grid g2" style="margin-top:14px;align-items:start">
+      <div class="card"><h2>Carga diaria</h2>
+        <div class="legend">${Object.entries(S.cat.visitTypes).map(([t, v]) => `<span><i style="background:var(--t-${t})"></i>${esc(v.label)}</span>`).join('')}</div>
+        <div class="chartbox"><canvas id="upC" aria-label="Solicitudes programadas por día según tipo"></canvas></div></div>
+      <div class="card"><h2>Carga por técnico</h2><div id="upTech"></div></div>
+    </div>
+    <div class="card" style="margin-top:14px"><h2>Agenda <span class="faint" style="font-weight:500;margin-left:auto" id="agInfo"></span></h2><div id="ag"></div></div>
+    <div class="card" style="margin-top:14px"><h2>Mantenciones por agendar</h2>
+      <p class="faint" style="margin:-6px 0 8px">Equipos cuyo último informe recomienda una mantención dentro del período y que aún no tienen solicitud.</p><div id="due"></div></div>`);
+  let chart = null;
+  const load = async () => {
+    $$('#hz button').forEach((b) => b.classList.toggle('on', +b.dataset.d === horizon));
+    const today = todayISO(), until = addDays(today, horizon - 1);
+    const [reqs, due] = await Promise.all([
+      api(`/requests?status=abiertas&sched_from=${today}&sched_to=${until}&limit=1000`),
+      api(`/maintenance-due?days=${horizon}`),
+    ]);
+    const rows = reqs.filter((q) => q.status !== 'en_curso').sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || (a.priority === 'urgente' ? -1 : 0));
+    const tomorrow = addDays(today, 1);
+    const n = (fn) => rows.filter(fn).length;
+    $('#upT').innerHTML = tile('Hoy', n((q) => q.scheduled_date === today), '', 'Programadas para hoy')
+      + tile('Mañana', n((q) => q.scheduled_date === tomorrow), '', new Date(tomorrow + 'T12:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric' }))
+      + tile(`Próximos ${horizon} días`, rows.length, '', `${n((q) => q.priority === 'urgente' || q.priority === 'alta')} urgentes o de prioridad alta`)
+      + tileLink('#/solicitudes/sin-asignar', 'Sin técnico', n((q) => !q.technician_id), n((q) => !q.technician_id) ? 'Hay que asignarlas' : 'Todas asignadas', n((q) => !q.technician_id) ? 'warn' : '');
+
+    // Gráfico: solicitudes por día y tipo
+    const days = Array.from({ length: horizon }, (_, i) => addDays(today, i));
+    const types = Object.keys(S.cat.visitTypes);
+    const draw = () => {
+      if (!window.Chart) return setTimeout(draw, 300);
+      if (chart) chart.destroy();
+      const surf = cssVar('--surface'), line = cssVar('--line');
+      Chart.defaults.font.family = "'IBM Plex Sans', system-ui, sans-serif"; Chart.defaults.color = cssVar('--ink-2');
+      chart = new Chart($('#upC'), {
+        type: 'bar',
+        data: { labels: days.map((d) => { const x = new Date(d + 'T12:00'); return d === today ? 'Hoy' : x.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric' }); }),
+          datasets: types.map((t) => ({ label: S.cat.visitTypes[t].label, data: days.map((d) => rows.filter((q) => q.scheduled_date === d && q.type === t).length),
+            backgroundColor: cssVar('--t-' + t), borderColor: surf, borderWidth: { top: 2 }, borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 28 })) },
+        options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false }, tooltip: { backgroundColor: cssVar('--ink'), titleColor: surf, bodyColor: surf, padding: 10, cornerRadius: 8, boxPadding: 4, filter: (i) => i.raw > 0 } },
+          scales: { x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } }, y: { stacked: true, beginAtZero: true, grid: { color: line }, border: { display: false }, ticks: { precision: 0 } } },
+          onClick: (e, els) => { if (els.length) { const el = $(`[data-day="${days[els[0].index]}"]`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } } },
+      });
+      S.charts.push(chart);
+    };
+    draw();
+
+    // Carga por técnico
+    const load_ = {};
+    team.filter((t) => t.active).forEach((t) => (load_[t.id] = { name: t.name, id: t.id, n: 0, urg: 0, first: null, enTerreno: t.en_curso }));
+    rows.forEach((q) => { const k = q.technician_id || 0; const o = (load_[k] ||= { name: k ? q.tech_name : 'Sin asignar', id: k, n: 0, urg: 0, first: null });
+      o.n++; if (q.priority === 'urgente' || q.priority === 'alta') o.urg++; if (!o.first || q.scheduled_date < o.first) o.first = q.scheduled_date; });
+    const tl = Object.values(load_).sort((a, b) => (b.id === 0) - (a.id === 0) || b.n - a.n);
+    const max = Math.max(1, ...tl.map((t) => t.n));
+    $('#upTech').innerHTML = tl.length ? `<div class="tload">${tl.map((t) => `<${t.id ? `a href="#/tecnico/${t.id}"` : 'a href="#/solicitudes/sin-asignar"'} class="tl-row${t.id ? '' : ' warn'}">
+        <span class="tl-n">${esc(t.name)}${t.enTerreno ? ' <span class="chip live"><i></i>En terreno</span>' : ''}</span>
+        <span class="tl-bar"><i style="width:${(t.n / max) * 100}%"></i></span>
+        <span class="tl-v num">${t.n}</span>
+        <span class="tl-h faint">${t.n ? `${t.urg ? t.urg + ' prioritarias · ' : ''}desde ${fmtD(t.first).replace(/ \d{4}$/, '')}` : 'Libre'}</span></a>`).join('')}</div>` : '<div class="empty">No hay técnicos activos.</div>';
+
+    // Agenda agrupada por día
+    const groups = {}; rows.forEach((q) => (groups[q.scheduled_date] ||= []).push(q));
+    $('#agInfo').textContent = rows.length ? `${rows.length} solicitud${rows.length === 1 ? '' : 'es'} · hasta ${fmtD(until)}` : '';
+    $('#ag').innerHTML = rows.length ? Object.entries(groups).map(([d, qs]) => `<div class="agday" data-day="${d}">
+        <div class="agh"><b>${d === today ? 'Hoy' : d === tomorrow ? 'Mañana' : new Date(d + 'T12:00').toLocaleDateString('es-CL', { weekday: 'long' })}</b>
+          <span>${new Date(d + 'T12:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}</span><span class="chip">${qs.length}</span></div>
+        <ul class="list">${qs.map((q) => reqItem(q, false)).join('')}</ul></div>`).join('')
+      : `<div class="empty">No hay solicitudes programadas en los próximos ${horizon} días.</div>`;
+    $$('#ag li.req').forEach((li, i) => (li.onclick = () => requestDialog(rows[i], load))); // la agenda conserva el orden de rows
+
+    // Mantenciones sugeridas sin solicitud
+    $('#due').innerHTML = due.length ? `<ul class="list">${due.map((m, i) => `<li class="item"><span class="bar" style="background:var(--t-mantencion)"></span>
+        <div class="main"><b>${esc(m.client_name)}</b><div class="meta">${esc(m.equipment_name || 'General')} · recomendada en <a href="#/visita/${m.visit_id}">${esc(m.folio)}</a></div></div>
+        <span class="chip ${m.next_visit_date < today ? 'bad' : ''}">${m.next_visit_date < today ? '✕ Vencida ' : ''}${fmtD(m.next_visit_date)}</span>
+        <button class="btn sm primary" data-due="${i}">＋ Crear solicitud</button></li>`).join('')}</ul>`
+      : '<div class="empty">✓ No hay mantenciones pendientes de agendar en este período.</div>';
+    $$('[data-due]').forEach((b) => (b.onclick = () => { const m = due[+b.dataset.due];
+      requestDialog({ type: 'mantencion', client_id: m.client_id, equipment_id: m.equipment_id, priority: m.next_visit_date < today ? 'alta' : 'normal',
+        scheduled_date: m.next_visit_date < today ? today : m.next_visit_date, description: `Mantención preventiva recomendada en el informe ${m.folio}.` }, load); }));
+  };
+  $$('#hz button').forEach((b) => (b.onclick = () => { horizon = +b.dataset.d; try { sessionStorage.setItem('cl_hz', horizon); } catch {} load(); }));
+  $('#nr').onclick = () => requestDialog(null, load);
+  S.timer = setInterval(() => { if (!$('dialog[open]')) load(); }, 120000);
+  load();
 }
 
 // ---------- Técnicos / Mi equipo ----------

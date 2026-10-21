@@ -340,3 +340,33 @@ a.btn.disabled { pointer-events: none; opacity: .5; }
 /* Solicitudes: tipo de visita como etiqueta de color */
 .item .meta.req-type { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 3px 0 2px; }
 .item .meta.req-type .chip { font-size: 12px; }
+
+/* Tarjetas que llevan a un panel */
+a.tile.tlink { display: block; color: inherit; text-decoration: none; cursor: pointer; transition: border-color .15s, transform .15s; }
+a.tile.tlink:hover { border-color: var(--accent); transform: translateY(-1px); }
+a.tile.tlink .k { display: flex; justify-content: space-between; align-items: center; }
+a.tile.tlink .go { font-size: 18px; line-height: 1; color: var(--ink-3); }
+a.tile.tlink.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+a.tile.tlink.bad .v { color: var(--bad); }
+a.tile.tlink.warn .v { color: var(--warn); }
+/* Resumen de un panel */
+.psum { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 10px 12px; margin: 0 0 6px; background: var(--surface-2); border-radius: 10px; font-size: 13px; color: var(--ink-2); }
+.psum b { color: var(--ink); font-size: 15px; }
+.psum .by { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Próximas */
+.seg.hz { max-width: 460px; }
+.tload { display: flex; flex-direction: column; gap: 2px; }
+.tl-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(60px, 1fr) 28px; grid-template-areas: "n bar v" "h h h"; gap: 2px 10px; align-items: center; padding: 8px 6px; border-radius: 8px; color: inherit; text-decoration: none; }
+.tl-row:hover { background: var(--surface-2); }
+.tl-n { grid-area: n; font-weight: 600; font-size: 14px; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.tl-bar { grid-area: bar; height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.tl-bar i { display: block; height: 100%; background: var(--accent); border-radius: 5px; min-width: 2px; }
+.tl-row.warn .tl-bar i { background: var(--warn); }
+.tl-row.warn .tl-n { color: var(--warn); }
+.tl-v { grid-area: v; text-align: right; font-weight: 600; }
+.tl-h { grid-area: h; font-size: 12px; }
+.agday + .agday { margin-top: 10px; }
+.agh { display: flex; gap: 10px; align-items: baseline; padding: 8px 4px 4px; border-bottom: 2px solid var(--line); }
+.agh b { text-transform: capitalize; font-size: 15px; }
+.agh span:not(.chip) { color: var(--ink-3); font-size: 13px; }
+.agh .chip { margin-left: auto; }
